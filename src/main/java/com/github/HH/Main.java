@@ -18,8 +18,7 @@ public class Main {
             httpclient.execute(httpGet, response -> {
                 System.out.println(response.getCode() + " " + response.getReasonPhrase());
                 final HttpEntity entity1 = response.getEntity();
-                // do something useful with the response body
-                // and ensure it is fully consumed
+
                 System.out.println(EntityUtils.toString(entity1));
                 EntityUtils.consume(entity1);
                 return null;
