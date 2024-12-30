@@ -16,7 +16,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-
 public class Main {
     public static void main(String[] args) throws IOException {
 
@@ -36,65 +35,89 @@ public class Main {
             // 获取链接；ArrayList从尾部删除最有效率,然而remove会返回删除的数据
             String link = linkPool.remove(linkPool.size() - 1);
 
-
             // 判断是否有处理过该链接
             if (preocessedLink.contains(link)) {
                 continue;
             }
 
             // 凡事以sina.cn结尾的链接均为需要处理的，排除那些广告
-            if (link.contains("sina.cn") && !link.contains("passport.sina.cn") && link.contains("news.sina.cn") || "https://sina.cn/?from=sinacom".equals(link)) {
+            if (isNeedLink(link)) {
                 // 只处理相关信息
-                System.out.println(link);
-
                 // 若出现//news.sina.cn/...这种类似链接导致无法识别，拼接上https：
                 if (link.startsWith("//")) {
                     link = "https:" + link;
                     System.out.println(link);
                 }
 
-                try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
-                    ClassicHttpRequest httpGet = ClassicRequestBuilder.get(link)
-                            .build();
-                    httpGet.addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
-                    httpclient.execute(httpGet, response -> {
+                // 调用 httpGetAndParseHtml 方法进行请求和解析
+                Document doc = httpGetAndParseHtml(link);
 
-                        System.out.println(response.getCode() + " " + response.getReasonPhrase());
-                        final HttpEntity entity1 = response.getEntity();
+                // 选择所有的a标签
+                ArrayList<Element> links = doc.select("a");
 
-                        String html = EntityUtils.toString(entity1);
+                // 获取href属性并丢到待处理的链接池中
+                links.stream().map(aTag -> aTag.attr("href")).forEach(linkPool::add);
 
-                        Document doc = Jsoup.parse(html);
+                // 若为新闻页面则存入数据库
+                storeIntoDatabaseIfItIsNewsPage(doc);
 
-                        // 选择所有的a标签
-                        ArrayList<Element> links = doc.select("a");
+                // 将处理后的链接丢入已处理过的链接池
+                preocessedLink.add(link);
 
-                        // 获取href属性并丢到待处理的链接池中
-                        for (Element aTag : links) {
-                            String href = aTag.attr("href");
-                            linkPool.add(href);
-                        }
-
-                        // 若为新闻页面则存入数据库
-                        ArrayList<Element> articleTags = doc.select("article");
-                        if (!articleTags.isEmpty()) {
-                            // 非空则进行操作
-                            for (Element articleTag : articleTags) {
-                                String title = articleTags.get(0).child(0).text();
-                                System.out.println(title);
-                            }
-                        }
-
-
-                        return null;
-                    });
-                }
             } else {
                 // 不需要处理的
                 continue;
             }
-            preocessedLink.add(link);
-
         }
+    }
+
+    // http的get请求与页面解析方法抽取
+    private static Document httpGetAndParseHtml(String link) {
+        try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
+            ClassicHttpRequest httpGet = ClassicRequestBuilder.get(link)
+                    .build();
+            httpGet.addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
+
+            // 执行请求并解析HTML
+            return httpclient.execute(httpGet, response -> {
+                System.out.println(response.getCode() + " " + response.getReasonPhrase());
+                final HttpEntity entity = response.getEntity();
+
+                // 获取响应的内容
+                String html = EntityUtils.toString(entity);
+
+                // 使用Jsoup解析HTML并返回Document对象
+                return Jsoup.parse(html);
+            });
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static void storeIntoDatabaseIfItIsNewsPage(Document doc) {
+        ArrayList<Element> articleTags = doc.select("article");
+        if (!articleTags.isEmpty()) {
+            // 非空则进行操作
+            for (Element articleTag : articleTags) {
+                String title = articleTags.get(0).child(0).text();
+                System.out.println(title);
+            }
+        }
+    }
+
+    private static boolean isNeedLink(String link) {
+        return isNotLoginPage(link) && isNewsPage(link) || isIndexPage(link);
+    }
+
+    private static boolean isIndexPage(String link) {
+        return "https://sina.cn/?from=sinacom".equals(link);
+    }
+
+    private static boolean isNewsPage(String link) {
+        return link.contains("news.sina.cn");
+    }
+
+    private static boolean isNotLoginPage(String link) {
+        return !link.contains("passport.sina.cn");
     }
 }
