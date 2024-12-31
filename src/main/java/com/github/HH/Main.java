@@ -27,6 +27,7 @@ public class Main {
         linkPool.add("https://sina.cn/?from=sinacom");
 
         while (true) {
+            // 测试
             // 链接全部处理完毕
             if (linkPool.isEmpty()) {
                 break;
